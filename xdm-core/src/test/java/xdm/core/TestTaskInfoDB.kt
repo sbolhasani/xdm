@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import xdm.core.downloaders.BatchDownloadTaskInfo
+import xdm.core.downloaders.BatchItem
 import xdm.core.downloaders.DashDownloadTaskInfo
 import xdm.core.downloaders.HlsDownloadTaskInfo
 import xdm.core.downloaders.HttpDownloadTaskInfo
@@ -24,6 +26,8 @@ import xdm.core.downloaders.web.streaming.downloader.HlsTaskContext
 import xdm.core.downloaders.web.streaming.downloader.StreamingChunk
 import xdm.core.downloaders.web.streaming.manifest.dash.DashSegment
 import xdm.core.network.http.HeaderMap
+import xdm.core.network.http.DownloadProxyMode
+import xdm.core.network.http.DownloadProxySettings
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -57,6 +61,24 @@ class TestTaskInfoDB : HttpDownloadTestBase() {
         categoryId = "CAT_VIDEOS", targetFolder = "/downloads",
         maxPiece = 4, authInfo = null, knownFileSize = 1234L
     )
+
+    @Test
+    fun perDownloadProxyIsPersistedForHttpAndBatchWithoutPlaintextPassword() {
+        val proxy = DownloadProxySettings(DownloadProxyMode.SOCKS, "localhost", 1080, "test", "s3cr3t!")
+        val http = httpTask(120).copy(proxySettings = proxy)
+        assertTrue(db().saveHttpTask(http))
+        assertEquals(proxy, db().getHttpTask(120)?.proxySettings)
+        val serialized = java.io.File(work, "task-120.info").readBytes().toString(Charsets.ISO_8859_1)
+        assertTrue(!serialized.contains("s3cr3t!"), "proxy secret was saved in plaintext")
+        val batch = BatchDownloadTaskInfo(
+            id = 121, name = "batch", folder = "/downloads", headers = null, origin = null,
+            maxPiece = 0, cookies = emptyList(),
+            items = listOf(BatchItem("https://example.com/a", "a", -1, null, true)),
+            proxySettings = proxy,
+        )
+        db().saveBatchTask(batch)
+        assertEquals(proxy, db().getBatchTask(121)?.proxySettings)
+    }
 
     @Test
     fun http_roundTripKeepsCookieHeadersOriginAndFolder() {
