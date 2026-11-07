@@ -4,78 +4,70 @@
 package xdm.core.downloaders.web
 
 import xdm.core.CoreConfig
-import xdm.core.downloaders.DownloadHost
 import xdm.core.util.Logger
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-
 import kotlin.math.ceil
 
+/**
+ * Aggregate, per-download speed limiter. All segment threads report the cumulative
+ * downloaded-byte count; the budget is shared instead of being reset by each thread.
+ */
 class SpeedLimiter(val config: CoreConfig) {
-    @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
-    private val lock: CountDownLatch = CountDownLatch(1)
-    private var lastTick: Long = 0
-    private var lastBytes: Long = 0
+    private val wake = CountDownLatch(1)
     private val disabled = AtomicBoolean(false)
+    private var baselineNs = 0L
+    private var baselineBytes = 0L
+    private var maxDownloaded = 0L
+    private var activeLimit = 0
 
+    /**
+     * Use a cumulative deadline on a monotonic clock. Resetting lastTick after each sleep
+     * previously let simultaneous segments repeatedly consume a fresh allowance, causing
+     * a 2 MB / 512 KB/s download to finish in about 2 seconds instead of 4 seconds.
+     */
+    @Synchronized
     fun throttleIfNeeded(downloaded: Long) {
-        val speedLimit = getSpeedLimit()
-        if (speedLimit < 1) {
-            // Forget the baseline while off: turned back on, the limit measures from then, not from when it
-            // was last on, which would mean sleeping for everything downloaded in between.
-            lastBytes = 0
-            lastTick = 0
+        if (disabled.get()) return
+        val limit = getSpeedLimit()
+        if (limit <= 0) {
+            activeLimit = 0
+            baselineNs = 0L
+            baselineBytes = 0L
+            maxDownloaded = 0L
             return
         }
-        if (lastBytes == 0L || lastTick == 0L) {
-            lastBytes = downloaded
-            lastTick = System.currentTimeMillis()
-            return
-        }
-        synchronized(this) {
-            try {
-                val maxBytesPerMS = speedLimit.toDouble() * 1024 / 1000
-                val now = System.currentTimeMillis()
-                val actualTimeSpent = now - lastTick
-                if (actualTimeSpent < 1) return
-                val diff = downloaded - lastBytes
-                lastBytes = downloaded
-                lastTick = now
-                val expectedTimeSpent = diff / maxBytesPerMS
 
-                if (actualTimeSpent < expectedTimeSpent) {
-                    sleep(ceil(expectedTimeSpent - actualTimeSpent).toLong())
-                }
-            } catch (e: Exception) {
-                Logger.error(e)
-            }
+        maxDownloaded = maxOf(maxDownloaded, downloaded)
+        if (baselineNs == 0L || activeLimit != limit) {
+            activeLimit = limit
+            baselineNs = System.nanoTime()
+            baselineBytes = maxDownloaded
+            return
+        }
+
+        val bytesSinceBaseline = (maxDownloaded - baselineBytes).coerceAtLeast(0L)
+        val expectedNs = bytesSinceBaseline.toDouble() * 1_000_000_000.0 / (limit.toDouble() * 1024.0)
+        val elapsedNs = (System.nanoTime() - baselineNs).coerceAtLeast(0L)
+        val remainingNs = expectedNs - elapsedNs
+        if (remainingNs <= 0.0) return
+
+        try {
+            // Wait is interruptible by disable() and therefore by download cancellation.
+            wake.await(ceil(remainingNs).toLong(), TimeUnit.NANOSECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } catch (e: Exception) {
+            Logger.error(e)
         }
     }
 
     fun disable() {
-        try {
-            lock.countDown()
-        } catch (e: Exception) {
-            Logger.error(e)
-        }
         disabled.set(true)
+        wake.countDown()
     }
 
-    private fun sleep(interval: Long) {
-        try {
-            if (!disabled.get() && lock.await(interval, TimeUnit.MILLISECONDS)) {
-                Logger.info("Speed limiter wait cancelled!")
-            }
-        } catch (e: Exception) {
-            Logger.error(e)
-        }
-    }
-
-    private fun getSpeedLimit(): Int {
-        if (config.speedLimiterEnabled && config.speedLimit > 0) {
-            return config.speedLimit
-        }
-        return 0
-    }
+    private fun getSpeedLimit(): Int =
+        if (config.speedLimiterEnabled && config.speedLimit > 0) config.speedLimit else 0
 }
