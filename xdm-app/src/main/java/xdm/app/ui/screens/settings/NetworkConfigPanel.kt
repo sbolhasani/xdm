@@ -22,11 +22,12 @@ import javax.swing.SpinnerNumberModel
 
 /** How XDM reaches the network: proxy, timeouts and certificate handling. */
 class NetworkConfigPanel : SettingsPanel() {
-    private enum class ProxyMode { NONE, HTTP, SOCKS }
+    private enum class ProxyMode { NONE, SYSTEM, HTTP, SOCKS }
 
     private val optProxy = SettingsOptionGroup(
         listOf(
             SettingsOption(ProxyMode.NONE, I8N.text("MSG_NO_PROXY"), RemixIcon.CLOSE_CIRCLE_LINE),
+            SettingsOption(ProxyMode.SYSTEM, "System Proxy", RemixIcon.GLOBAL_LINE),
             SettingsOption(ProxyMode.HTTP, I8N.text("MSG_HTTP_PROXY"), RemixIcon.GLOBAL_LINE),
             SettingsOption(ProxyMode.SOCKS, I8N.text("MSG_SOCKS_PROXY"), RemixIcon.SERVER_LINE),
         )
@@ -145,7 +146,7 @@ class NetworkConfigPanel : SettingsPanel() {
         }
 
     private fun updateProxySettings() {
-        proxyFields.isVisible = optProxy.selected != ProxyMode.NONE
+        proxyFields.isVisible = optProxy.selected == ProxyMode.HTTP || optProxy.selected == ProxyMode.SOCKS
         revalidate()
         repaint()
     }
@@ -168,8 +169,9 @@ class NetworkConfigPanel : SettingsPanel() {
     fun load() {
         val config = AppContext.config
         optProxy.selected = when {
-            config.useProxy -> ProxyMode.HTTP
+            config.systemProxy -> ProxyMode.SYSTEM
             config.socksProxy -> ProxyMode.SOCKS
+            config.useProxy -> ProxyMode.HTTP
             else -> ProxyMode.NONE
         }
         updateProxySettings()
@@ -186,6 +188,7 @@ class NetworkConfigPanel : SettingsPanel() {
         val hasHost = txtProxyHost.text.isNotEmpty()
         config.useProxy = optProxy.selected == ProxyMode.HTTP && hasHost
         config.socksProxy = optProxy.selected == ProxyMode.SOCKS && hasHost
+        config.systemProxy = optProxy.selected == ProxyMode.SYSTEM
         config.proxyHost = txtProxyHost.text
         config.proxyPort = spProxyPort.value as Int
         config.proxyUser = txtProxyUser.text
