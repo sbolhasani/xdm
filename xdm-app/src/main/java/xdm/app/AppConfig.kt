@@ -220,6 +220,7 @@ private const val F_SWING_FILE_CHOOSER = 52
 private const val F_UI_SCALE = 53
 private const val F_THEME_MIGRATED = 54
 private const val F_NOTIFIED_UPDATE_VERSION = 55
+private const val F_SYSTEM_PROXY = 56
 
 // Inside F_CATEGORIES: one F_CATEGORY record per category, in order.
 private const val F_CATEGORY = 1
@@ -343,6 +344,8 @@ class AppConfig(private val configDir: String) : IAppConfig {
     override var maxRetries: Int = 5
     override var useProxy: Boolean = false
     override var socksProxy: Boolean = false
+    /** Select the platform proxy for each URL, instead of a fixed proxy endpoint. */
+    var systemProxy: Boolean = false
     override var proxyHost: String = ""
     override var proxyPort: Int = 8080
     override var proxyUser: String = ""
@@ -429,6 +432,7 @@ class AppConfig(private val configDir: String) : IAppConfig {
         w.int(F_MAX_RETRIES, maxRetries)
         w.bool(F_USE_PROXY, useProxy)
         w.bool(F_SOCKS_PROXY, socksProxy)
+        w.bool(F_SYSTEM_PROXY, systemProxy)
         w.string(F_PROXY_HOST, proxyHost)
         w.int(F_PROXY_PORT, proxyPort)
         w.string(F_PROXY_USER, proxyUser)
@@ -497,6 +501,7 @@ class AppConfig(private val configDir: String) : IAppConfig {
                 F_MAX_RETRIES -> maxRetries = r.int()
                 F_USE_PROXY -> useProxy = r.bool()
                 F_SOCKS_PROXY -> socksProxy = r.bool()
+                F_SYSTEM_PROXY -> systemProxy = r.bool()
                 F_PROXY_HOST -> proxyHost = r.string()
                 F_PROXY_PORT -> proxyPort = r.int()
                 F_PROXY_USER -> proxyUser = r.string()
@@ -606,7 +611,7 @@ class AppConfig(private val configDir: String) : IAppConfig {
     }
 
     override fun toProxy(): Proxy? {
-        if (!useProxy) return null
+        if (!useProxy && !socksProxy) return null
         if (socksProxy) {
             return Proxy(Proxy.Type.SOCKS, java.net.InetSocketAddress(proxyHost, proxyPort))
         } else {
