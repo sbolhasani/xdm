@@ -8,6 +8,7 @@ import xdm.core.downloaders.web.streaming.manifest.dash.DashSegment
 import xdm.core.network.http.HeaderMap
 import xdm.core.network.http.DownloadProxyMode
 import xdm.core.network.http.DownloadProxySettings
+import xdm.core.network.http.ProxyPasswordCipher
 import xdm.core.network.http.SensitiveHeaders
 import xdm.core.util.AtomicIO
 import xdm.core.util.Logger
@@ -63,12 +64,14 @@ private const val PROXY_MODE = 1
 private const val PROXY_HOST = 2
 private const val PROXY_PORT = 3
 private const val PROXY_USERNAME = 4
+private const val PROXY_ENCRYPTED_PASSWORD = 5
 
 private fun TagWriter.proxySettings(no: Int, settings: DownloadProxySettings) = message(no) {
     string(PROXY_MODE, settings.mode.name)
     string(PROXY_HOST, settings.host)
     int(PROXY_PORT, settings.port)
     string(PROXY_USERNAME, settings.username)
+    if (settings.password.isNotEmpty()) string(PROXY_ENCRYPTED_PASSWORD, ProxyPasswordCipher.encrypt(settings.password))
 }
 
 private fun TagReader.proxySettings(): DownloadProxySettings {
@@ -77,6 +80,7 @@ private fun TagReader.proxySettings(): DownloadProxySettings {
     var host = ""
     var port = 8080
     var username = ""
+    var password = ""
     while (true) {
         when (r.next()) {
             -1 -> break
@@ -84,10 +88,11 @@ private fun TagReader.proxySettings(): DownloadProxySettings {
             PROXY_HOST -> host = r.string()
             PROXY_PORT -> port = r.int()
             PROXY_USERNAME -> username = r.string()
+            PROXY_ENCRYPTED_PASSWORD -> password = ProxyPasswordCipher.decrypt(r.string())
             else -> r.skip()
         }
     }
-    return runCatching { DownloadProxySettings(mode, host, port, username) }.getOrDefault(DownloadProxySettings())
+    return runCatching { DownloadProxySettings(mode, host, port, username, password) }.getOrDefault(DownloadProxySettings())
 }
 
 // BatchItem
