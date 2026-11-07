@@ -6,6 +6,7 @@ package xdm.core.downloaders
 import xdm.core.downloaders.web.SegmentProgress
 import xdm.core.downloaders.web.streaming.manifest.dash.DashSegment
 import xdm.core.network.http.HeaderMap
+import xdm.core.network.http.DownloadProxySettings
 import xdm.core.util.StableId
 import java.io.File
 
@@ -76,6 +77,8 @@ data class HttpDownloadTaskInfo(
      * check when it is added. Deliberately not persisted by TaskInfoDB, so it is null on reload.
      */
     val etag: String? = null,
+    /** Network policy for this download; INHERIT follows current global settings. */
+    var proxySettings: DownloadProxySettings = DownloadProxySettings(),
 )
 
 /**
@@ -122,6 +125,7 @@ abstract class StreamingDownloadTaskInfo(
     open var targetFolder: String,
     open var maxPiece: Int,
     open var authInfo: AuthInfo?,
+    open var proxySettings: DownloadProxySettings = DownloadProxySettings(),
 )
 
 data class HlsDownloadTaskInfo(
@@ -142,6 +146,7 @@ data class HlsDownloadTaskInfo(
     var independent: Boolean,
     /** The subtitles to save beside the video: the tracker offers all, a download keeps the one picked. */
     var subtitles: List<SubtitleTrack> = emptyList(),
+    override var proxySettings: DownloadProxySettings = DownloadProxySettings(),
 ) : StreamingDownloadTaskInfo(
     id,
     fileName,
@@ -153,7 +158,8 @@ data class HlsDownloadTaskInfo(
     categoryId,
     targetFolder,
     maxPiece,
-    authInfo
+    authInfo,
+    proxySettings
 )
 
 data class DashDownloadTaskInfo(
@@ -232,6 +238,7 @@ data class BatchDownloadTaskInfo(
      * `<tempDir>/batch-<id>/`: the merge reads them as local files. Null when no item is merged.
      */
     var tempDir: String? = null,
+    var proxySettings: DownloadProxySettings = DownloadProxySettings(),
 ) {
     val batchFolder: String get() = File(folder, name).absolutePath
 
