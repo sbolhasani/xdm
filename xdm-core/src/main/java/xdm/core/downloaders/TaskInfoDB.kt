@@ -6,6 +6,8 @@ package xdm.core.downloaders
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import xdm.core.downloaders.web.streaming.manifest.dash.DashSegment
 import xdm.core.network.http.HeaderMap
+import xdm.core.network.http.DownloadProxyMode
+import xdm.core.network.http.DownloadProxySettings
 import xdm.core.network.http.SensitiveHeaders
 import xdm.core.util.AtomicIO
 import xdm.core.util.Logger
@@ -28,6 +30,7 @@ private const val F_COOKIE = 8
 private const val F_HEADERS = 9
 private const val F_ORIGIN = 10
 private const val F_TYPE = 11
+private const val F_PROXY_SETTINGS = 12
 
 private const val HTTP_KNOWN_FILE_SIZE = 20
 
@@ -53,6 +56,39 @@ private const val BATCH_HEADERS = 6
 private const val BATCH_COOKIE = 7
 private const val BATCH_ITEM = 8
 private const val BATCH_TEMP_DIR = 9
+private const val BATCH_PROXY_SETTINGS = 10
+
+// Proxy settings are saved in a nested tagged message; credentials remain separate.
+private const val PROXY_MODE = 1
+private const val PROXY_HOST = 2
+private const val PROXY_PORT = 3
+private const val PROXY_USERNAME = 4
+
+private fun TagWriter.proxySettings(no: Int, settings: DownloadProxySettings) = message(no) {
+    string(PROXY_MODE, settings.mode.name)
+    string(PROXY_HOST, settings.host)
+    int(PROXY_PORT, settings.port)
+    string(PROXY_USERNAME, settings.username)
+}
+
+private fun TagReader.proxySettings(): DownloadProxySettings {
+    val r = message()
+    var mode = DownloadProxyMode.INHERIT
+    var host = ""
+    var port = 8080
+    var username = ""
+    while (true) {
+        when (r.next()) {
+            -1 -> break
+            PROXY_MODE -> mode = runCatching { DownloadProxyMode.valueOf(r.string()) }.getOrDefault(DownloadProxyMode.INHERIT)
+            PROXY_HOST -> host = r.string()
+            PROXY_PORT -> port = r.int()
+            PROXY_USERNAME -> username = r.string()
+            else -> r.skip()
+        }
+    }
+    return runCatching { DownloadProxySettings(mode, host, port, username) }.getOrDefault(DownloadProxySettings())
+}
 
 // BatchItem
 private const val ITEM_URL = 1
@@ -184,6 +220,7 @@ private class CommonFields {
     var headers: HeaderMap? = null
     var origin: String? = null
     var type = 0
+    var proxySettings = DownloadProxySettings()
 
     /** Reads field [no] if it is a shared one; false for any other field, which the caller handles. */
     fun read(no: Int, r: TagReader): Boolean {
@@ -199,6 +236,7 @@ private class CommonFields {
             F_HEADERS -> headers = r.headers()
             F_ORIGIN -> origin = r.string()
             F_TYPE -> type = r.int()
+            F_PROXY_SETTINGS -> proxySettings = r.proxySettings()
             else -> return false
         }
         return true
@@ -211,6 +249,7 @@ private class CommonFields {
 private fun TagWriter.common(
     type: DownloadType, id: Long, url: String, fileName: String, respectFileName: Boolean, categoryId: String?,
     targetFolder: String, maxPiece: Int, cookie: String?, headers: HeaderMap?, origin: String?,
+    proxySettings: DownloadProxySettings,
 ) {
     int(F_TYPE, type.id)
     long(F_ID, id)
@@ -226,6 +265,7 @@ private fun TagWriter.common(
     // Credentials such as Authorization stay in memory only.
     headers(F_HEADERS, SensitiveHeaders.strip(id, headers))
     stringOrNull(F_ORIGIN, origin)
+    proxySettings(F_PROXY_SETTINGS, proxySettings)
 }
 
 /**
@@ -261,6 +301,7 @@ class TaskInfoDB(private val configDir: String) {
                 maxPiece = c.maxPiece,
                 authInfo = null,
                 knownFileSize = knownFileSize,
+                proxySettings = c.proxySettings,
             )
         }
         return null
@@ -306,6 +347,7 @@ class TaskInfoDB(private val configDir: String) {
                 tempDir = tempDir,
                 independent = independent,
                 subtitles = subtitles,
+                proxySettings = c.proxySettings,
             )
         }
         return null
@@ -354,6 +396,7 @@ class TaskInfoDB(private val configDir: String) {
                 audioMime = audioMime,
                 videoMime = videoMime,
                 subtitles = subtitles,
+                proxySettings = c.proxySettings,
             )
         }
         return null
@@ -366,7 +409,7 @@ class TaskInfoDB(private val configDir: String) {
                 common(
                     DownloadType.Http,
                     task.id, task.url, task.fileName, task.respectFileName, task.categoryId,
-                    task.targetFolder, task.maxPiece, task.cookie, task.headers, task.origin,
+                    task.targetFolder, task.maxPiece, task.cookie, task.headers, task.origin, task.proxySettings,
                 )
                 task.knownFileSize?.let { long(HTTP_KNOWN_FILE_SIZE, it) }
             }
@@ -378,7 +421,7 @@ class TaskInfoDB(private val configDir: String) {
                 common(
                     DownloadType.Hls,
                     task.id, task.url, task.fileName, task.respectFileName, task.categoryId,
-                    task.targetFolder, task.maxPiece, task.cookie, task.headers, task.origin,
+                    task.targetFolder, task.maxPiece, task.cookie, task.headers, task.origin, task.proxySettings,
                 )
                 stringOrNull(HLS_AUDIO_URL, task.audioUrl)
                 bool(HLS_AUDIO_ONLY, task.audioOnly)
@@ -395,7 +438,7 @@ class TaskInfoDB(private val configDir: String) {
                 common(
                     DownloadType.Dash,
                     task.id, task.url, task.fileName, task.respectFileName, task.categoryId,
-                    task.targetFolder, task.maxPiece, task.cookie, task.headers, task.origin,
+                    task.targetFolder, task.maxPiece, task.cookie, task.headers, task.origin, task.proxySettings,
                 )
                 string(DASH_TEMP_DIR, task.tempDir)
                 task.audioSegments.forEach { dashSegment(DASH_AUDIO_SEGMENT, it) }
@@ -420,6 +463,7 @@ class TaskInfoDB(private val configDir: String) {
             val items = ArrayList<BatchItem>()
             var tempDir: String? = null
             var type = 0
+            var proxySettings = DownloadProxySettings()
             while (true) {
                 when (r.next()) {
                     -1 -> break
@@ -433,6 +477,7 @@ class TaskInfoDB(private val configDir: String) {
                     BATCH_COOKIE -> cookies.add(r.string())
                     BATCH_ITEM -> items.add(readBatchItem(r.message()))
                     BATCH_TEMP_DIR -> tempDir = r.string()
+                    BATCH_PROXY_SETTINGS -> proxySettings = r.proxySettings()
                     else -> r.skip()
                 }
             }
@@ -447,6 +492,7 @@ class TaskInfoDB(private val configDir: String) {
                 cookies = cookies,
                 items = items,
                 tempDir = tempDir,
+                proxySettings = proxySettings,
             )
         }
         return null
@@ -495,6 +541,7 @@ class TaskInfoDB(private val configDir: String) {
                 // In order: BatchItem.cookieGroup is an index into this list.
                 task.cookies.forEach { string(BATCH_COOKIE, it) }
                 task.tempDir?.let { string(BATCH_TEMP_DIR, it) }
+                proxySettings(BATCH_PROXY_SETTINGS, task.proxySettings)
                 for (item in task.items) {
                     message(BATCH_ITEM) {
                         string(ITEM_URL, item.url)
