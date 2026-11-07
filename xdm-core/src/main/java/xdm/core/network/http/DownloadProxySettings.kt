@@ -30,6 +30,8 @@ data class DownloadProxySettings(
     val host: String = "",
     val port: Int = 8080,
     val username: String = "",
+    /** Sensitive: never log or store as cleartext. */
+    val password: String = "",
 ) {
     init {
         if (mode == DownloadProxyMode.HTTP || mode == DownloadProxyMode.SOCKS) {
@@ -37,6 +39,8 @@ data class DownloadProxySettings(
             require(port in 1..65535) { "Proxy port must be between 1 and 65535" }
         }
     }
+
+    override fun toString(): String = "DownloadProxySettings(mode=$mode, host=$host, port=$port, username=$username, password=<redacted>)"
 
     /** Only explicit proxies have a fixed java.net.Proxy value. */
     fun explicitProxy(): Proxy? = when (mode) {
