@@ -11,6 +11,7 @@ import xdm.core.network.http.*
 import xdm.core.util.Logger
 import java.net.InetSocketAddress
 import java.net.Proxy
+import java.net.ProxySelector
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -37,6 +38,10 @@ class HttpClientImpl @JvmOverloads constructor(
     serverAuth: Boolean = false,
     /** Resolves host names; tests pass a fixed address list. */
     dns: Dns = Dns.SYSTEM,
+    /** Use per-URL platform proxy selection, including non-proxy hosts and PAC when supported. */
+    systemProxy: Boolean = false,
+    /** Explicitly avoid the default proxy selector even when the JVM has a system proxy. */
+    directConnection: Boolean = false,
 ) : PoolingHttpClient {
     /** Set when the user cancels a credentials prompt: this client stops asking. */
     private val authCancelled = AtomicBoolean(false)
@@ -66,7 +71,13 @@ class HttpClientImpl @JvmOverloads constructor(
      */
     private val client: OkHttpClient =
         OkHttpClient.Builder().dispatcher(dispatcher).connectionPool(connectionPool)
-            .proxy(proxy)
+            .apply {
+                when {
+                    directConnection -> proxy(Proxy.NO_PROXY)
+                    systemProxy -> proxySelector(ProxySelector.getDefault())
+                    else -> proxy(proxy)
+                }
+            }
             .dns(dns)
             .fastFallback(true)
             .protocols(listOf(Protocol.HTTP_1_1))
