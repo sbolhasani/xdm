@@ -25,6 +25,7 @@ import xdm.app.utils.scaledSize
 import xdm.app.utils.validateURL
 import xdm.app.utils.windowIconImages
 import xdm.core.downloaders.HttpDownloadTaskInfo
+import xdm.core.network.http.DownloadProxySettings
 import xdm.core.util.*
 import xdm.core.util.CoreUtils.uniqueId
 import xdm.integration.EventChannel
@@ -58,6 +59,7 @@ class NewDownloadWindow : JDialog(null as Window?) {
     private lateinit var tempFolderCards: TempFolderCards
 
     private var taskInfo: HttpDownloadTaskInfo? = null
+    private var proxySettings = DownloadProxySettings()
 
     init {
         initUI()
@@ -205,6 +207,12 @@ class NewDownloadWindow : JDialog(null as Window?) {
         spnSegments = segmentsSpinner().apply { count = AppContext.config.maxSegments }
         panel.add(spnSegments)
 
+        panel.add(Box.createRigidArea(scaledSize(8, 0)))
+        val btnProxy = JButton("Proxy…")
+        btnProxy.addActionListener {
+            ProxySettingsEditor.choose(this, proxySettings)?.let { proxySettings = it }
+        }
+        panel.add(btnProxy)
         panel.add(Box.createHorizontalGlue())
         val rigidArea1 = Box.createRigidArea(scaledSize(10, 20))
         panel.add(rigidArea1)
@@ -467,6 +475,7 @@ class NewDownloadWindow : JDialog(null as Window?) {
             knownFileSize = taskInfo?.knownFileSize,
             // The browser's ETag belongs to the URL it captured, not to an address typed over it.
             etag = taskInfo?.etag?.takeIf { taskInfo?.url == url },
+            proxySettings = proxySettings,
         )
 
         AppContext.downloader.startHttpDownload(task, now)
@@ -549,6 +558,7 @@ class NewDownloadWindow : JDialog(null as Window?) {
     fun showWindow(taskInfo: HttpDownloadTaskInfo?) {
         lblIgnore.isVisible = taskInfo != null
         spnSegments.count = AppContext.config.maxSegments
+        proxySettings = taskInfo?.proxySettings ?: DownloadProxySettings()
         if (taskInfo == null) {
             val url = getClipBoardText()
             if (url != null && validateURL(url)) {
