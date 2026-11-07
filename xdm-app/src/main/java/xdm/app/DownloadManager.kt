@@ -1209,7 +1209,8 @@ class DownloadManager(
             username, password, auth = AppContext.httpAuth, serverAuth = true,
             systemProxy = settings.mode == DownloadProxyMode.SYSTEM ||
                 (settings.mode == DownloadProxyMode.INHERIT && config.systemProxy),
-            directConnection = settings.mode == DownloadProxyMode.DIRECT,
+            directConnection = settings.mode == DownloadProxyMode.DIRECT ||
+                (settings.mode == DownloadProxyMode.INHERIT && !config.systemProxy && proxy == null),
         )
     }
 
