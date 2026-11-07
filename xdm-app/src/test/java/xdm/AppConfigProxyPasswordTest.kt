@@ -14,7 +14,7 @@ import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 
-/** The proxy password is kept in memory only; the user name is still saved, in a user-only file. */
+/** The personal fork encrypts the proxy password at rest with a transitional built-in key. */
 class AppConfigProxyPasswordTest {
     private lateinit var dir: File
 
@@ -41,13 +41,13 @@ class AppConfigProxyPasswordTest {
         ByteArrayOutputStream().also { DataOutputStream(it).writeUTF(text) }.toByteArray().drop(2).toByteArray()
 
     @Test
-    fun password_isNotSaved() {
+    fun password_isSavedEncrypted() {
         AppConfig(dir.absolutePath).apply { proxyUser = "alice"; proxyPass = "hunter2-secret" }.save()
 
         assertFalse(anyFileContains("hunter2-secret"), "proxy password written to disk")
         val loaded = AppConfig(dir.absolutePath).apply { load() }
         assertEquals("alice", loaded.proxyUser, "proxy user not saved")
-        assertEquals("", loaded.proxyPass, "proxy password came back from disk")
+        assertEquals("hunter2-secret", loaded.proxyPass, "proxy password failed to decrypt")
     }
 
     @Test
