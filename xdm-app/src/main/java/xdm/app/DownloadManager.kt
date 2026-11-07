@@ -22,6 +22,8 @@ import xdm.core.downloaders.web.streaming.downloader.hls.HlsDownloaderTask
 import xdm.core.downloaders.web.streaming.downloader.hls.HlsKeyStore
 import xdm.core.media.muxer.impl.TransmuxingMuxer
 import xdm.core.network.http.HeaderMap
+import xdm.core.network.http.DownloadProxyMode
+import xdm.core.network.http.DownloadProxySettings
 import xdm.core.network.http.impl.HttpClientImpl
 import xdm.core.storage.StorageFile
 import xdm.core.storage.StorageFolder
@@ -568,25 +570,25 @@ class DownloadManager(
     /** The real engine task for [type], built from its persisted task info. */
     private fun createTask(type: DownloadType, id: Long, host: DownloadHost): DownloaderTask? = when (type) {
         DownloadType.Http -> taskInfoDB.getHttpTask(id)?.let {
-            HttpDownloaderTask(it, host, newHttpClient(), configDir, AppContext.config)
+            HttpDownloaderTask(it, host, newHttpClient(it.proxySettings), configDir, AppContext.config)
         }
 
         DownloadType.Hls -> taskInfoDB.getHlsTask(id)?.let {
             HlsDownloaderTask(
-                taskInfo = it, http = newHttpClient(), muxer = TransmuxingMuxer(AppContext.configDir),
+                taskInfo = it, http = newHttpClient(it.proxySettings), muxer = TransmuxingMuxer(AppContext.configDir),
                 host = host, configDir = AppContext.configDir, config = AppContext.config
             )
         }
 
         DownloadType.Dash -> taskInfoDB.getDashTask(id)?.let {
             DashDownloaderTask(
-                taskInfo = it, http = newHttpClient(), muxer = TransmuxingMuxer(AppContext.configDir),
+                taskInfo = it, http = newHttpClient(it.proxySettings), muxer = TransmuxingMuxer(AppContext.configDir),
                 host = host, configDir = AppContext.configDir, config = AppContext.config
             )
         }
 
         DownloadType.Batch -> taskInfoDB.getBatchTask(id)?.let {
-            BatchDownloaderTask(it, newHttpClient(), host, configDir, AppContext.config) {
+            BatchDownloaderTask(it, newHttpClient(it.proxySettings), host, configDir, AppContext.config) {
                 TransmuxingMuxer(AppContext.configDir)
             }
         }
@@ -1160,12 +1162,25 @@ class DownloadManager(
         }
     }
 
-    private fun newHttpClient() =
-        HttpClientImpl(
-            CoreConfig.MAX_SEGMENTS, AppContext.config.toProxy(), AppContext.config.ignoreCertErrors, AppContext.config.readTimeoutSeconds,
-            AppContext.config.proxyUser, AppContext.config.proxyPass,
-            auth = AppContext.httpAuth, serverAuth = true,
+    /** Each engine task owns its HTTP client, so a per-download proxy never affects another task. */
+    private fun newHttpClient(settings: DownloadProxySettings = DownloadProxySettings()): HttpClientImpl {
+        val config = AppContext.config
+        val proxy = when (settings.mode) {
+            DownloadProxyMode.INHERIT -> config.toProxy()
+            DownloadProxyMode.HTTP, DownloadProxyMode.SOCKS -> settings.explicitProxy()
+            DownloadProxyMode.SYSTEM, DownloadProxyMode.DIRECT -> null
+        }
+        val username = if (settings.mode == DownloadProxyMode.INHERIT) config.proxyUser else settings.username
+        // Per-download passwords will be provided by the credential store; never copy global
+        // credentials to an unrelated proxy endpoint.
+        val password = if (settings.mode == DownloadProxyMode.INHERIT) config.proxyPass else ""
+        return HttpClientImpl(
+            CoreConfig.MAX_SEGMENTS, proxy, config.ignoreCertErrors, config.readTimeoutSeconds,
+            username, password, auth = AppContext.httpAuth, serverAuth = true,
+            systemProxy = settings.mode == DownloadProxyMode.SYSTEM,
+            directConnection = settings.mode == DownloadProxyMode.DIRECT,
         )
+    }
 
     private fun deleteAfterStopped(id: Long, task: DownloaderTask) {
         try {
