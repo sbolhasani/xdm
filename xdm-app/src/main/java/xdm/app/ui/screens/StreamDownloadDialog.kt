@@ -231,6 +231,8 @@ class StreamDownloadDialog(private val near: Window?) : JFrame() {
         }
     }
 
+    private var proxySettings = xdm.core.network.http.DownloadProxySettings()
+
     private fun createDownloadPanel(): JComponent {
         // Side padding lines the rows up with the tab content above them.
         val p = JPanel(GridBagLayout()).apply { border = ScaledEmptyBorder(10, 10, 0, 10) }
@@ -256,7 +258,14 @@ class StreamDownloadDialog(private val near: Window?) : JFrame() {
             layout = BoxLayout(this, BoxLayout.X_AXIS)
             border = ScaledEmptyBorder(6, 0, 0, 0)
             add(JLabel(text("ND_SEGMENTS"))); add(Box.createRigidArea(scaledSize(10, 0)))
-            add(spnSegments); add(Box.createHorizontalGlue())
+            add(spnSegments)
+            add(Box.createRigidArea(scaledSize(8, 0)))
+            add(JButton("Proxy…").apply {
+                addActionListener {
+                    ProxySettingsEditor.choose(this@StreamDownloadDialog, proxySettings)?.let { proxySettings = it }
+                }
+            })
+            add(Box.createHorizontalGlue())
             add(btnCancel); add(Box.createRigidArea(scaledSize(10, 0)))
             add(btnDownload)
         }
@@ -447,6 +456,7 @@ class StreamDownloadDialog(private val near: Window?) : JFrame() {
                     targetFolder = folder, maxPiece = segments,
                     authInfo = null, url = pick.url, audioUrl = pick.audioUrl, audioOnly = pick.audioOnly,
                     independent = pick.independent,
+                    proxySettings = proxySettings,
                 )
             )
 
@@ -457,6 +467,7 @@ class StreamDownloadDialog(private val near: Window?) : JFrame() {
                     targetFolder = folder, maxPiece = segments,
                     authInfo = null, videoSegments = pick.video.segments, audioSegments = pick.audio.segments,
                     url = manifest.url, audioMime = pick.audio.mimeType, videoMime = pick.video.mimeType,
+                    proxySettings = proxySettings,
                 )
             )
 
@@ -465,7 +476,7 @@ class StreamDownloadDialog(private val near: Window?) : JFrame() {
                     id = CoreUtils.uniqueId(), url = pick.url, fileName = name, respectFileName = true,
                     cookie = cookie, headers = headers, origin = origin, categoryId = categoryId,
                     targetFolder = folder, maxPiece = segments,
-                    authInfo = null, knownFileSize = null,
+                    authInfo = null, knownFileSize = null, proxySettings = proxySettings,
                 )
             )
         }
