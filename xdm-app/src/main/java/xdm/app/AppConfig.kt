@@ -106,6 +106,7 @@ interface IAppConfig : CoreConfig {
     override var maxSegments: Int
     override var maxRetries: Int
     override var useProxy: Boolean
+    var systemProxy: Boolean
     override var proxyHost: String
     override var proxyPort: Int
     override var proxyUser: String
@@ -347,7 +348,7 @@ class AppConfig(private val configDir: String) : IAppConfig {
     override var useProxy: Boolean = false
     override var socksProxy: Boolean = false
     /** Select the platform proxy for each URL, instead of a fixed proxy endpoint. */
-    var systemProxy: Boolean = false
+    override var systemProxy: Boolean = false
     override var proxyHost: String = ""
     override var proxyPort: Int = 8080
     override var proxyUser: String = ""
