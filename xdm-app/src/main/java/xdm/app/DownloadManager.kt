@@ -1197,9 +1197,8 @@ class DownloadManager(
             DownloadProxyMode.SYSTEM, DownloadProxyMode.DIRECT -> null
         }
         val username = if (settings.mode == DownloadProxyMode.INHERIT && !config.systemProxy) config.proxyUser else settings.username
-        // Per-download passwords will be provided by the credential store; never copy global
-        // credentials to an unrelated proxy endpoint.
-        val password = if (settings.mode == DownloadProxyMode.INHERIT && !config.systemProxy) config.proxyPass else ""
+        // Credentials are scoped to this task's selected endpoint.
+        val password = if (settings.mode == DownloadProxyMode.INHERIT && !config.systemProxy) config.proxyPass else settings.password
         return HttpClientImpl(
             CoreConfig.MAX_SEGMENTS, proxy, config.ignoreCertErrors, config.readTimeoutSeconds,
             username, password, auth = AppContext.httpAuth, serverAuth = true,
