@@ -15,6 +15,31 @@ class TestSpeedLimiter {
      * running downloads). The first throttle after that must measure from then on, not sleep for
      * everything downloaded while the limit was off: minutes here, during which every segment waits.
      */
+    /**
+     * Concurrent segments report the aggregate byte count. Pausing after a first allowance
+     * must not reset the rate budget for another segment's callback.
+     */
+    @Test
+    fun concurrentSegmentsShareOneRateBudget() {
+        val config = TestConfig(maxSegments = 4).apply {
+            speedLimiterEnabled = true
+            speedLimit = 256 // KB/s
+        }
+        val limiter = SpeedLimiter(config)
+        limiter.throttleIfNeeded(0L) // establish the first byte budget
+        val started = System.nanoTime()
+        val first = Thread { limiter.throttleIfNeeded(128L * 1024) }
+        val second = Thread { limiter.throttleIfNeeded(256L * 1024) }
+        first.start()
+        second.start()
+        first.join(3500)
+        second.join(3500)
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000
+        limiter.disable()
+        assertTrue(!first.isAlive && !second.isAlive, "limiter did not finish")
+        assertTrue(elapsedMs >= 850, "segments exceeded shared 256 KB/s budget: ${elapsedMs}ms")
+    }
+
     @Test
     fun reenabled_doesNotSleepForBytesDownloadedWhileOff() {
         val config = TestConfig(maxSegments = 1).apply {
