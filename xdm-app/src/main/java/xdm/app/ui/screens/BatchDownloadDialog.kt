@@ -493,12 +493,20 @@ class BatchDownloadDialog(near: Window?, private val request: BatchRequest) : JF
         folderHandPicked = true
     }
 
+    private var proxySettings = xdm.core.network.http.DownloadProxySettings()
+
     private fun createButtonPanel(): JPanel {
         val panel = JPanel().apply {
             border = ScaledEmptyBorder(0, 10, 10, 10)
             layout = BoxLayout(this, BoxLayout.X_AXIS)
         }
         panel.add(Box.createHorizontalGlue())
+        panel.add(JButton("Proxy…").apply {
+            addActionListener {
+                ProxySettingsEditor.choose(this@BatchDownloadDialog, proxySettings)?.let { proxySettings = it }
+            }
+        })
+        panel.add(Box.createRigidArea(scaledSize(10, 0)))
 
         val btnCancel = JButton(text("ND_CANCEL"))
         btnCancel.addActionListener { dispose() }
@@ -622,6 +630,7 @@ class BatchDownloadDialog(near: Window?, private val request: BatchRequest) : JF
             cookies = request.cookies,
             items = items,
             tempDir = AppContext.config.tempFolder.takeIf { items.any { it.merged } },
+            proxySettings = proxySettings,
         )
         if (!AppContext.downloader.startBatchDownload(task)) {
             MessageBox.show(this, text("MENU_BATCH_DOWNLOAD"), text("BATCH_FOLDER_ERROR").format(task.batchFolder))
@@ -658,6 +667,7 @@ class BatchDownloadDialog(near: Window?, private val request: BatchRequest) : JF
                     maxPiece = AppContext.config.maxSegments,
                     authInfo = null,
                     knownFileSize = e.item.knownSize,
+                    proxySettings = proxySettings,
                 )
             )
         }
@@ -671,7 +681,7 @@ class BatchDownloadDialog(near: Window?, private val request: BatchRequest) : JF
         if (pick.complete) {
             VideoHelper.splitTrackTask(
                 uniqueId(), pick.video!!, pick.audio!!, fileName, request.pageUrl, request.headers, cookie, null, folder,
-            )?.let { AppContext.downloader.startDashDownload(it) }
+            )?.let { it.proxySettings = proxySettings; AppContext.downloader.startDashDownload(it) }
             return
         }
         val single = pick.video ?: pick.audio ?: return
@@ -689,6 +699,7 @@ class BatchDownloadDialog(near: Window?, private val request: BatchRequest) : JF
                 maxPiece = AppContext.config.maxSegments,
                 authInfo = null,
                 knownFileSize = single.probe.totalSize,
+                proxySettings = proxySettings,
             )
         )
     }
