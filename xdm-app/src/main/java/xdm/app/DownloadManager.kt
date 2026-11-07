@@ -72,6 +72,7 @@ interface IDownloadManager {
     fun addVideoDownload(
         videoId: Long, fileName: String, categoryId: String?, targetFolder: String, maxPiece: Int? = null,
         subtitle: SubtitleTrack? = null,
+        proxySettings: DownloadProxySettings = DownloadProxySettings(),
     )
     fun startHlsDownload(task: HlsDownloadTaskInfo)
     fun startDashDownload(task: DashDownloadTaskInfo)
@@ -854,6 +855,7 @@ class DownloadManager(
     override fun addVideoDownload(
         videoId: Long, fileName: String, categoryId: String?, targetFolder: String, maxPiece: Int?,
         subtitle: SubtitleTrack?,
+        proxySettings: DownloadProxySettings,
     ) {
         // Each download of a detected video is a new download: copy the tracker's entry with a fresh
         // id instead of reusing (and mutating) it, so downloading the same video twice cannot share
@@ -865,6 +867,7 @@ class DownloadManager(
                     id = CoreUtils.uniqueId(), fileName = fileName, categoryId = categoryId,
                     targetFolder = targetFolder,
                     maxPiece = maxPiece ?: source.maxPiece,
+                    proxySettings = proxySettings,
                 )
             )
             return
@@ -877,6 +880,7 @@ class DownloadManager(
                     id = CoreUtils.uniqueId(), fileName = fileName, categoryId = categoryId,
                     targetFolder = targetFolder,
                     maxPiece = maxPiece ?: source.maxPiece,
+                    proxySettings = proxySettings,
                     subtitles = listOfNotNull(subtitle),
                 )
             )
@@ -889,6 +893,7 @@ class DownloadManager(
                     id = CoreUtils.uniqueId(), fileName = fileName, categoryId = categoryId,
                     targetFolder = targetFolder,
                     maxPiece = maxPiece ?: source.maxPiece,
+                    proxySettings = proxySettings,
                     subtitles = listOfNotNull(subtitle),
                 )
             )
