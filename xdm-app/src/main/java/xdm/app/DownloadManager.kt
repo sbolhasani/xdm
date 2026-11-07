@@ -1166,18 +1166,19 @@ class DownloadManager(
     private fun newHttpClient(settings: DownloadProxySettings = DownloadProxySettings()): HttpClientImpl {
         val config = AppContext.config
         val proxy = when (settings.mode) {
-            DownloadProxyMode.INHERIT -> config.toProxy()
+            DownloadProxyMode.INHERIT -> if (config.systemProxy) null else config.toProxy()
             DownloadProxyMode.HTTP, DownloadProxyMode.SOCKS -> settings.explicitProxy()
             DownloadProxyMode.SYSTEM, DownloadProxyMode.DIRECT -> null
         }
-        val username = if (settings.mode == DownloadProxyMode.INHERIT) config.proxyUser else settings.username
+        val username = if (settings.mode == DownloadProxyMode.INHERIT && !config.systemProxy) config.proxyUser else settings.username
         // Per-download passwords will be provided by the credential store; never copy global
         // credentials to an unrelated proxy endpoint.
-        val password = if (settings.mode == DownloadProxyMode.INHERIT) config.proxyPass else ""
+        val password = if (settings.mode == DownloadProxyMode.INHERIT && !config.systemProxy) config.proxyPass else ""
         return HttpClientImpl(
             CoreConfig.MAX_SEGMENTS, proxy, config.ignoreCertErrors, config.readTimeoutSeconds,
             username, password, auth = AppContext.httpAuth, serverAuth = true,
-            systemProxy = settings.mode == DownloadProxyMode.SYSTEM,
+            systemProxy = settings.mode == DownloadProxyMode.SYSTEM ||
+                (settings.mode == DownloadProxyMode.INHERIT && config.systemProxy),
             directConnection = settings.mode == DownloadProxyMode.DIRECT,
         )
     }
