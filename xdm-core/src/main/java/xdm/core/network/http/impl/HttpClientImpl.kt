@@ -83,7 +83,7 @@ class HttpClientImpl @JvmOverloads constructor(
             .protocols(listOf(Protocol.HTTP_1_1))
             .connectTimeout(30, TimeUnit.SECONDS).readTimeout(readTimeoutSeconds.toLong(), TimeUnit.SECONDS).retryOnConnectionFailure(false)
             .apply { if (ignoreCertErrors) trustAllCertificates(this) else sharedTls(this) }
-            .apply { if (proxy != null) proxyAuthentication(this, proxy, proxyUser, proxyPassword) }
+            .apply { if (proxy != null || systemProxy) proxyAuthentication(this, proxy, proxyUser, proxyPassword) }
             .apply { if (serverAuth && auth != null) serverAuthentication(this, auth) }
             .build()
 
@@ -102,14 +102,14 @@ class HttpClientImpl @JvmOverloads constructor(
      * authentication does not come through here at all: the JDK socket layer asks the default
      * authenticator itself.
      */
-    private fun proxyAuthentication(builder: OkHttpClient.Builder, proxy: Proxy, user: String, password: String) {
-        val address = proxy.address() as? InetSocketAddress ?: return
+    private fun proxyAuthentication(builder: OkHttpClient.Builder, proxy: Proxy?, user: String, password: String) {
         val configured = if (user.isNotEmpty()) BasicCredentials(user, password) else null
-        val scope = AuthScope(proxy = true, host = address.hostString, port = address.port, realm = null)
         fun credentials(sent: BasicCredentials?, scope: AuthScope): BasicCredentials? =
             if (auth != null) auth.onChallenge(scope, sent, authCancelled, configured) else configured?.takeIf { sent == null }
 
-        builder.proxyAuthenticator { _, response ->
+        builder.proxyAuthenticator { route, response ->
+            val address = (route?.proxy ?: proxy)?.address() as? InetSocketAddress ?: return@proxyAuthenticator null
+            val scope = AuthScope(proxy = true, host = address.hostString, port = address.port, realm = null)
             val preemptive = response.header("Proxy-Authenticate").equals(PREEMPTIVE_CHALLENGE, ignoreCase = true)
             // An NTLM proxy answers a preemptive Basic header with a 407 anyway; do not hand it the password.
             if (preemptive && proxyWantsNtlm.get()) return@proxyAuthenticator null
