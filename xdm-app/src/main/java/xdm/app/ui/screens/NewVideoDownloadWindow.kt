@@ -57,6 +57,7 @@ class NewVideoDownloadWindow : JDialog(null as Window?) {
     private var videoId: Long = -1
 
     private var taskInfo: StreamingDownloadTaskInfo? = null
+    private var proxySettings = xdm.core.network.http.DownloadProxySettings()
 
     init {
         initUI()
@@ -201,6 +202,11 @@ class NewVideoDownloadWindow : JDialog(null as Window?) {
         spnSegments = segmentsSpinner().apply { count = AppContext.config.maxSegments }
         panel.add(spnSegments)
 
+        panel.add(JButton("Proxy…").apply {
+            addActionListener {
+                ProxySettingsEditor.choose(this@NewVideoDownloadWindow, proxySettings)?.let { proxySettings = it }
+            }
+        })
         panel.add(Box.createHorizontalGlue())
         val rigidArea1 = Box.createRigidArea(scaledSize(10, 20))
         panel.add(rigidArea1)
@@ -252,6 +258,7 @@ class NewVideoDownloadWindow : JDialog(null as Window?) {
             AppContext.downloader.addVideoDownload(
                 videoId, name, picker.selectedCategory?.id, picker.targetFolder, spnSegments.count,
                 (cmbSubtitles.selectedItem as? SubtitleChoice)?.track,
+                proxySettings,
             )
         } finally {
             dispose()
