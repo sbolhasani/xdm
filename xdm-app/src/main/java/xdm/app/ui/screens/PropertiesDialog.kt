@@ -21,6 +21,7 @@ import xdm.app.utils.px
 import xdm.app.utils.scaledInsets
 import xdm.app.utils.scaledSize
 import xdm.app.utils.setClipBoardText
+import xdm.core.network.http.DownloadProxySettings
 import xdm.core.downloaders.BatchDownloadTaskInfo
 import xdm.core.downloaders.DownloadType
 import xdm.core.downloaders.web.batch.BatchTaskContext
@@ -295,6 +296,23 @@ class PropertiesDialog(private val owner: Window?, ent: DbRecord) : JDialog(owne
             add(JButton(text("CD_VERIFY_CHECKSUM"), createIcon(RemixIcon.FINGERPRINT_FILL, 16, settingsAccentColor())).apply {
                 addActionListener {
                     ChecksumWindow(File(folder, ent.fileName), ChecksumPanel.sourceOf(ent.id), this@PropertiesDialog).isVisible = true
+                }
+            })
+        }
+        if (ent.downloadType != DownloadType.Torrent) {
+            add(JButton("Proxy…").apply {
+                addActionListener {
+                    val db = AppContext.taskInfoDB
+                    val current = when (ent.downloadType) {
+                        DownloadType.Http -> db.getHttpTask(ent.id)?.proxySettings
+                        DownloadType.Hls -> db.getHlsTask(ent.id)?.proxySettings
+                        DownloadType.Dash -> db.getDashTask(ent.id)?.proxySettings
+                        DownloadType.Batch -> db.getBatchTask(ent.id)?.proxySettings
+                        DownloadType.Torrent -> null
+                    } ?: return@addActionListener
+                    ProxySettingsEditor.choose(this@PropertiesDialog, current)?.let {
+                        AppContext.downloader.updateDownloadProxy(ent.id, it)
+                    }
                 }
             })
         }
