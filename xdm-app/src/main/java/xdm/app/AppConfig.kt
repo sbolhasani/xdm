@@ -2,6 +2,7 @@ package xdm.app
 
 import xdm.app.ui.components.SortKey
 import xdm.core.CoreConfig
+import xdm.core.network.http.ProxyPasswordCipher
 import xdm.core.util.AtomicIO
 import xdm.core.util.Logger
 import xdm.core.util.NotTaggedException
@@ -221,6 +222,7 @@ private const val F_UI_SCALE = 53
 private const val F_THEME_MIGRATED = 54
 private const val F_NOTIFIED_UPDATE_VERSION = 55
 private const val F_SYSTEM_PROXY = 56
+private const val F_PROXY_ENCRYPTED_PASSWORD = 57
 
 // Inside F_CATEGORIES: one F_CATEGORY record per category, in order.
 private const val F_CATEGORY = 1
@@ -349,7 +351,7 @@ class AppConfig(private val configDir: String) : IAppConfig {
     override var proxyHost: String = ""
     override var proxyPort: Int = 8080
     override var proxyUser: String = ""
-    /** Kept in memory only: [save] never writes it. */
+    /** Persisted encrypted with the fork's transitional fixed-key credential cipher. */
     override var proxyPass: String = ""
     override var haltAfterDownload: Boolean = false
     override var keepAwake: Boolean = true
@@ -436,7 +438,7 @@ class AppConfig(private val configDir: String) : IAppConfig {
         w.string(F_PROXY_HOST, proxyHost)
         w.int(F_PROXY_PORT, proxyPort)
         w.string(F_PROXY_USER, proxyUser)
-        // proxyPass: never written to disk
+        if (proxyPass.isNotEmpty()) w.string(F_PROXY_ENCRYPTED_PASSWORD, ProxyPasswordCipher.encrypt(proxyPass))
         w.bool(F_HALT_AFTER_DOWNLOAD, haltAfterDownload)
         w.bool(F_KEEP_AWAKE, keepAwake)
         w.string(F_CUSTOM_COMMAND, customCommand)
@@ -502,6 +504,7 @@ class AppConfig(private val configDir: String) : IAppConfig {
                 F_USE_PROXY -> useProxy = r.bool()
                 F_SOCKS_PROXY -> socksProxy = r.bool()
                 F_SYSTEM_PROXY -> systemProxy = r.bool()
+                F_PROXY_ENCRYPTED_PASSWORD -> proxyPass = ProxyPasswordCipher.decrypt(r.string())
                 F_PROXY_HOST -> proxyHost = r.string()
                 F_PROXY_PORT -> proxyPort = r.int()
                 F_PROXY_USER -> proxyUser = r.string()
