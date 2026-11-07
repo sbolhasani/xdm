@@ -84,6 +84,8 @@ interface IDownloadManager {
 
     /** Downloads again the files of a finished batch that failed; the finished ones are kept. */
     fun retryFailedFiles(id: Long)
+    /** Update an item-specific proxy. Running downloads are paused and resumed after saving. */
+    fun updateDownloadProxy(id: Long, settings: DownloadProxySettings): Boolean
     fun updateDownloadInfo(id: Long, task: HttpDownloadTaskInfo)
     fun updateDownloadLink(id: Long, url: String, headers: HeaderMap?, cookie: String?)
     fun getOriginPage(id: Long): String?
@@ -116,6 +118,7 @@ class DownloadManager(
     taskFactory: DownloaderTaskFactory? = null,
 ) : IDownloadManager {
     private val taskFactory: DownloaderTaskFactory = taskFactory ?: ::createTask
+    private val pendingProxyChanges = ConcurrentHashMap<Long, DownloadProxySettings>()
 
     /** URL and ETag hashes of the HTTP downloads, for the New Download dialog's duplicate check. */
     val duplicates = DuplicateIndex(configDir, appDB)
@@ -323,7 +326,12 @@ class DownloadManager(
                 AppContext.app.updateDownloadInView(id)
                 AppContext.app.hideProgressWindow(id)
                 if (toDelete.remove(id)) {
+                    pendingProxyChanges.remove(id)
                     deleteAfterStopped(id, it)
+                } else {
+                    pendingProxyChanges.remove(id)?.let { settings ->
+                        if (saveDownloadProxy(id, settings)) resumeDownload(id)
+                    }
                 }
                 pumpQueue()
             }
@@ -1009,6 +1017,24 @@ class DownloadManager(
             return getHeader("Referer", it.headers)
         }
         return null
+    }
+
+    private fun saveDownloadProxy(id: Long, settings: DownloadProxySettings): Boolean {
+        taskInfoDB.getHttpTask(id)?.let { it.proxySettings = settings; return taskInfoDB.saveHttpTask(it) }
+        taskInfoDB.getHlsTask(id)?.let { it.proxySettings = settings; taskInfoDB.saveHlsTask(it); return true }
+        taskInfoDB.getDashTask(id)?.let { it.proxySettings = settings; taskInfoDB.saveDashTask(it); return true }
+        taskInfoDB.getBatchTask(id)?.let { it.proxySettings = settings; taskInfoDB.saveBatchTask(it); return true }
+        return false
+    }
+
+    override fun updateDownloadProxy(id: Long, settings: DownloadProxySettings): Boolean {
+        if (appDB.getById(id) == null) return false
+        if (activeSessions.containsKey(id)) {
+            pendingProxyChanges[id] = settings
+            stopDownload(id)
+            return true
+        }
+        return saveDownloadProxy(id, settings)
     }
 
     override fun updateDownloadInfo(id: Long, task: HttpDownloadTaskInfo) =
