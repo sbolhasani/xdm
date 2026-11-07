@@ -29,6 +29,8 @@ import kotlin.system.exitProcess
 
 object AppMain {
     init {
+        // Enable Java platform proxy discovery before the default ProxySelector is initialized.
+        System.setProperty("java.net.useSystemProxies", "true")
         System.setProperty("http.KeepAlive.remainingData", "0")
         System.setProperty("http.KeepAlive.queuedConnections", "0")
         System.setProperty("swing.aatext", "true")
