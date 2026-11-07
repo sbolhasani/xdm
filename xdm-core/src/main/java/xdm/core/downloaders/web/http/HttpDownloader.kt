@@ -534,7 +534,8 @@ class HttpDownloaderTask : ChunkController {
             val position = chunk.offset + chunk.length.get()
 
             for (nextChunk in context.chunks.values) {
-                if (nextChunk.downloaded.get() == 0L
+                if (nextChunk.id != chunkId
+                    && nextChunk.status.get() != ChunkStatus.Finished
                     && nextChunk.offset == position
                     && nextChunk.length.get() + nextChunk.offset <= maxByteRange
                 ) {
@@ -552,6 +553,19 @@ class HttpDownloaderTask : ChunkController {
                     closeFileHandle(nc)
                     len = nc.length.get()
                     context.chunks.remove(nextChunkId)
+                    // The original connection has already consumed part of this range. The
+                    // continuing connection must re-read it from the range boundary. Undo its
+                    // progress credit now so the bytes are counted exactly once when rewritten.
+                    // This also keeps the persisted chunk lengths and downloaded total consistent
+                    // when the user pauses midway through the recovered range.
+                    val replayedBytes = nc.downloaded.get()
+                    if (replayedBytes > 0) {
+                        context.downloaded.addAndGet(-replayedBytes)
+                        progressTracker.update(-replayedBytes, context.totalSize, context.chunks)
+                        prgInfo.downloaded = progressTracker.totalDownloadedBytes
+                        prgInfo.progress = progressTracker.progress
+                        Logger.info("XDM", "Replaying $replayedBytes bytes from partially downloaded chunk $nextChunkId")
+                    }
                     Logger.info("XDM", "Chunk $nextChunkId removed with len $len")
                 }
                 context.chunks[chunkId]?.let { c ->
