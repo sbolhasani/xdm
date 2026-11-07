@@ -181,6 +181,7 @@ data class DashDownloadTaskInfo(
     val videoMime: String,
     /** As [HlsDownloadTaskInfo.subtitles]. */
     var subtitles: List<SubtitleTrack> = emptyList(),
+    override var proxySettings: DownloadProxySettings = DownloadProxySettings(),
 ) : StreamingDownloadTaskInfo(
     id,
     fileName,
@@ -192,7 +193,8 @@ data class DashDownloadTaskInfo(
     categoryId,
     targetFolder,
     maxPiece,
-    authInfo
+    authInfo,
+    proxySettings
 )
 
 /** One link of a [BatchDownloadTaskInfo]. */
