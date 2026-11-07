@@ -184,9 +184,12 @@ maxPiece = 0, authInfo = null, knownFileSize = null,
         assertTrue(secondHalf.get() >= 3, "the failed segment was never restarted (${secondHalf.get()} requests)")
     }
 
-    /** A range that is refused for good still ends in a reported failure once nothing is left running. */
+    /**
+     * If a later range receives some bytes and then every follow-up request is refused,
+     * the original healthy connection must replay and absorb that range without losing data.
+     */
     @Test
-    fun permanentlyFailedSegment_isReportedInsteadOfHanging() {
+    fun partiallyDownloadedRefusedSegment_isRecoveredByHealthyNeighbour() {
         val size = 4 * 1024 * 1024
         val half = size / 2L
         val bytes = randomData(size, seed = 305)
@@ -202,13 +205,9 @@ maxPiece = 0, authInfo = null, knownFileSize = null,
         val host = host()
         stallTask(305, "/fail", host, maxSegments = 2).start()
 
-        awaitDone(host, timeoutSec = 60)
-        assertNull(host.success, "download cannot succeed with a refused range")
-        // With bytes on disk and more than two chunks, reportFailure words a refusal as an expired session.
-        assertTrue(
-            host.failure == DownloadError.InvalidResponse || host.failure == DownloadError.SessionExpired,
-            "unexpected failure: ${host.failure}"
-        )
+        awaitSuccess(host, timeoutSec = 60)
+        assertChecksumMatches(host, bytes)
+        assertTrue(secondHalf.get() >= 2, "the partially downloaded range was never retried")
     }
 
     @Test
